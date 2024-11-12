@@ -1,0 +1,98 @@
+name: Build and Publish Snapshot Artifact
+
+permissions:
+  id-token: write
+
+
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Application SemVer'
+        required: true
+        default: '0.0.0'
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '.github/workflows/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository code
+      - name: Checkout specific commit
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.ref }}
+      # Set up JDK (Java Development Kit)
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'corretto'
+          java-version: '21'  # You can change this to '8', '17', etc., depending on your project
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        id: setup-jfrog-cli
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+          JF_PROJECT: ${{ vars.PROJECT_NAME }}
+        with:
+          oidc-provider-name: github-oidc-integration
+          oidc-audience: jfrog-github
+          disable-auto-build-publish: true
+
+      # Cache Maven dependencies for faster builds
+      - name: Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Configure Maven
+        shell: bash
+        run: |
+          jf mvnc \
+          --server-id-resolve=setup-jfrog-cli-server \
+          --server-id-deploy=setup-jfrog-cli-server \
+          --repo-resolve-releases=${{ vars.GLOBAL_SHARED_DEPENDENCIES_VIRTUAL_REPO }} \
+          --repo-resolve-snapshots=${{ vars.GLOBAL_SHARED_DEPENDENCIES_VIRTUAL_REPO }} \
+          --repo-deploy-releases=${{ vars.PROJECT_DEV_LOCAL_REPO }} \
+          --repo-deploy-snapshots=${{ vars.PROJECT_DEV_LOCAL_REPO }}
+
+      # Note, the JF CLI will automatically publish build info, and will use the JF_PROJECT as the --project parameter for all commands that take can accept it.
+      # This automatic publishing will not happen if a build-name, build-number or project parameter is passed in
+      - name: Get Abbreviated Commit SHA
+        id: short_sha
+        run: |
+          short_sha=$(git rev-parse --short HEAD)
+          echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Set Version
+        run: |
+          mvn versions:set -DnewVersion=${{ inputs.version }}-${{ steps.short_sha.outputs.short_sha }}
+
+      - name: Build Library
+        run: |
+          jf mvn clean install \
+          --build-name=${{ github.repository }} \
+          --build-number ${{ github.run_number }}
+
+      - name: Prepare Build Info
+        run: |
+          jf rt bag ${{ github.repository }} ${{ github.run_number }}
+          jf rt bce ${{ github.repository }} ${{ github.run_number }}
+
+      - name: Publish Build Info
+        run: |
+          jf rt bp ${{ github.repository }} ${{ github.run_number }}
+
+      - name: Set Properties on Published Artifacts
+        run: |
+          jf rt set-props commit_sha=${{ github.sha }} --build ${{ github.repository }}/${{ github.run_number }}
