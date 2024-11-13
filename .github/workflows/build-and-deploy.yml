@@ -82,8 +82,8 @@ jobs:
           else
             APP_VERSION="${{ inputs.version }}"
           fi
-          echo "The value is: APP_VERSION"
-          echo "APP_VERSION=APP_VERSION" >> $GITHUB_OUTPUT
+          echo "The value is: $APP_VERSION"
+          echo "APP_VERSION=$APP_VERSION" >> $GITHUB_OUTPUT
 
       - name: Set Version
         run: |
