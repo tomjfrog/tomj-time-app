@@ -1,0 +1,70 @@
+name: Create Release Bundle & Promote to Dev
+
+permissions:
+  id-token: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'The number of the build to promote'
+        required: false
+        default: ''
+  push:
+    tags:
+      - '*-rc-[0-9]*'
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        id: setup-jfrog-cli
+        env:
+          JF_URL: ${{ vars.JF_URL }}
+          JF_PROJECT: "tomj-time-app"
+        with:
+          oidc-provider-name: github-oidc-integration
+          oidc-audience: jfrog-github
+
+      - name: Find Latest Build Number For Build Name
+        if: ${{ inputs.build_number == '' }}
+        id: latest-build
+        run: |
+          python3 .github/workflows/find-latest-build.py --build_name ${{ github.repository }} --access_token ${{ steps.setup-jfrog-cli.outputs.oidc-token }} > latest-build-response.json
+          cat latest-build-response.json
+          echo "build_number=$(jq -r '.results[0]["build.number"]' latest-build-response.json)" >> $GITHUB_OUTPUT
+          echo build_number
+
+      - name: Set Build Name and Build Number to Promote
+        id: set-build-info
+        run: |
+          # Check if inputs are provided, otherwise use outputs from previous step
+          echo "build_name=${{ github.repository }}" >> $GITHUB_OUTPUT
+          echo "build_number=${{ inputs.build_number != '' && inputs.build_number || steps.latest-build.outputs.build_number }}" >> $GITHUB_OUTPUT
+
+      - name: Create Release Bundle
+        id: create-release-bundle
+        run: |
+          jf release-bundle-create \
+          ${{ vars.BUNDLE_NAME }} ${{ github.run_number }} \
+          --spec=./.github/workflows/filespecs/release-bundle-spec.json \
+          --spec-vars="BUILD_NAME=${{ steps.set-build-info.outputs.build_name }};BUILD_NUMBER=${{ steps.set-build-info.outputs.build_number }}" \
+          --signing-key="tomj-gpg-key" \
+          --sync=true
+
+      # Promote the Release Bundle to Stage.  This will only promote it into the Project repos.  It appears that
+      # "including" a non-project repo will fail with a 400 error, claiming the non-project target is not assigned to
+      # the target Environment.  This is misleading error messaging and moreover, we would need to fix this or come up
+      # an alternative.
+      - name: Promote Release Bundle to Snapshot Repos
+        id: promote-release-bundle-to-snapshot
+        run: |
+          jf release-bundle-promote \
+          ${{ vars.BUNDLE_NAME }} ${{ github.run_number }} STAGE \
+          --signing-key="tomj-gpg-key"
