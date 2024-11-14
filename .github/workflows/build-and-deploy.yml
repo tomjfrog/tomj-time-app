@@ -110,5 +110,5 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker buildx build -t tomjfrog.jfrog.io/tomj-time-lib-docker-dev-local/tomj-time-app:${{ steps.set_value.outputs.APP_VERSION }}-${{ steps.short_sha.outputs.short_sha }}
+          docker buildx build -t tomjfrog.jfrog.io/tomj-time-lib-docker-dev-local/tomj-time-app:${{ steps.set_value.outputs.APP_VERSION }}-${{ steps.short_sha.outputs.short_sha }} .
           jf docker push tomjfrog.jfrog.io/tomj-time-lib-docker-dev-local/tomj-time-app:${{ steps.set_value.outputs.APP_VERSION }}-${{ steps.short_sha.outputs.short_sha }}
