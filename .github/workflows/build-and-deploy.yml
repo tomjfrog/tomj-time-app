@@ -95,6 +95,13 @@ jobs:
           --build-name=${{ github.repository }} \
           --build-number ${{ github.run_number }}
 
+      - name: Build Docker Image
+        run: |
+          docker buildx build -t tomjfrog.jfrog.io/tomj-time-app-docker-dev-local/tomj-time-app:${{ steps.set_value.outputs.APP_VERSION }}-${{ steps.short_sha.outputs.short_sha }} .
+          jf docker push tomjfrog.jfrog.io/tomj-time-app-docker-dev-local/tomj-time-app:${{ steps.set_value.outputs.APP_VERSION }}-${{ steps.short_sha.outputs.short_sha }} \
+          --build-name ${{ github.repository }} \
+          --build-number ${{ github.run_number }}
+
       - name: Prepare Build Info
         run: |
           jf rt bag ${{ github.repository }} ${{ github.run_number }}
@@ -107,8 +114,3 @@ jobs:
       - name: Set Properties on Published Artifacts
         run: |
           jf rt set-props commit_sha=${{ github.sha }} --build ${{ github.repository }}/${{ github.run_number }}
-
-      - name: Build Docker Image
-        run: |
-          docker buildx build -t tomjfrog.jfrog.io/tomj-time-app-docker-dev-local/tomj-time-app:${{ steps.set_value.outputs.APP_VERSION }}-${{ steps.short_sha.outputs.short_sha }} .
-          jf docker push tomjfrog.jfrog.io/tomj-time-app-docker-dev-local/tomj-time-app:${{ steps.set_value.outputs.APP_VERSION }}-${{ steps.short_sha.outputs.short_sha }}
